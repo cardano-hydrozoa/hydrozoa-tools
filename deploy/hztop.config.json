@@ -1,0 +1,9 @@
+{
+  "heads": [
+    { "name": "head-0", "url": "http://127.0.0.1:8080" }
+  ],
+  "hard_confirm_warn_secs": 1800,
+  "hard_confirm_crit_secs": 3600,
+  "fallback_warn_secs": 1800,
+  "fallback_crit_secs": 600
+}

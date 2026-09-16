@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+.direnv/
+result
+result-*
+
+# JetBrains project state. RustRover writes local paths, open editors and run
+# configurations here; none of it belongs to the repo.
+.idea/

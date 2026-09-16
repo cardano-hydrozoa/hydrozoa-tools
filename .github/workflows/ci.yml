@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The `build` job is intended as a required status check (repository ruleset on `main`). It must
+  # ALWAYS run and report, or the ruleset blocks the merge — so we do NOT path-filter the workflow
+  # itself. Instead, a docs-only PR skips the expensive Nix/cargo steps and the check still passes.
+  build:
+    runs-on: ubuntu-latest
+    # Without this the job inherits GitHub's 6-hour default. The suite is small (~2 min warm), but
+    # a cold runner that fails to link the prebuilt RocksDB falls back to compiling the bundled C++
+    # source, which is the one step here that can run long enough to matter.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # On a PR, decide whether anything outside the docs changed. `code == 'false'` means
+      # docs-only.
+      - name: Detect non-docs changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '!**/*.md'
+
+      # Everything below runs for code changes and for manual (workflow_dispatch) runs; it is
+      # skipped only on a docs-only PR.
+      - name: Install Nix
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        uses: DeterminateSystems/nix-installer-action@main
+
+      # Keyed on Cargo.lock so a dependency bump invalidates it, with restore-keys so everything
+      # else rides on the last cache. `target/` is included deliberately: librocksdb-sys' bindgen
+      # output is the slowest thing in a cold build even when the library itself is linked from
+      # the devshell rather than compiled.
+      - name: Cache cargo registry and target
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      # `just ci` is fmt-check + clippy -D warnings + the test suite — the same three gates a
+      # developer runs locally, so a green CI and a green `nix develop --command just ci` mean the
+      # same thing. Running it as one recipe is what keeps them from drifting apart.
+      - name: Format, lint, and test
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        run: nix develop --command just ci
+
+      - name: Docs-only change — build/test skipped
+        if: github.event_name == 'pull_request' && steps.filter.outputs.code != 'true'
+        run: echo "Only Markdown changed — skipping Nix build, lint, and tests. The 'build' check passes."
