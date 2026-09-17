@@ -1,12 +1,13 @@
 # hydrozoa-tools
 
-Operator tools for a [Hydrozoa](https://github.com/cardano-hydrozoa/hydrozoa) head. Two crates,
-both read-only — nothing here writes to a node.
+Operator tools for a [Hydrozoa](https://github.com/cardano-hydrozoa/hydrozoa) head. Three crates;
+none of them writes to a node.
 
 | crate | what it is |
 |---|---|
 | [`hztop/`](hztop/README.md) | a btop-style terminal dashboard for a running head, over its HTTP API |
 | [`hydrozoa-store/`](hydrozoa-store/) | reads a head's RocksDB store as a secondary, without stopping the node |
+| [`hydrozoa-archiver/`](hydrozoa-archiver/README.md) | copies that store into an archive, so the node can trim it |
 
 ## Build
 
@@ -58,3 +59,10 @@ encoding changes, the test fails rather than the format drifting silently.
 See [`hztop/README.md`](hztop/README.md). Two screens — consensus and alerts — fed entirely by a head's
 own HTTP API. `hztop --json` (and any run whose stdout is not a terminal) prints the same state as
 one JSON document, so a script or an agent reads what the terminal draws.
+
+## `hydrozoa-archiver`
+
+See [`hydrozoa-archiver/README.md`](hydrozoa-archiver/README.md). Copies the node's store into a
+second RocksDB in the same layout, then tells the node how far it durably reached so the node may
+trim. Reading needs no cooperation from the node at all — that one report is the only coupling
+between the two processes.

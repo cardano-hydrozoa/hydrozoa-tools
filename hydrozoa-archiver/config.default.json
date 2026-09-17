@@ -1,0 +1,7 @@
+{
+  "store_path": "/opt/hydrozoa/store",
+  "secondary_path": "/tmp/hydrozoa-archiver-secondary",
+  "archive_path": "/opt/hydrozoa/archive",
+  "tail_interval_secs": 5,
+  "full_interval_secs": 300
+}

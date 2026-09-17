@@ -171,6 +171,24 @@ impl HeadStore {
         }
     }
 
+    /// Walk every entry in `cf` as raw `(key, value)` pairs, in key order.
+    ///
+    /// Works for any family, journal or not — which is what the eighteen fixed families need,
+    /// since none of them has a journal index to resume from. The value comes back exactly as
+    /// stored: for a journal that includes the arrival-stamp prefix, because a copy that keeps the
+    /// framed bytes keeps the ordering with them.
+    pub fn scan_raw(
+        &self,
+        cf: Cf,
+    ) -> Result<impl Iterator<Item = Result<(Vec<u8>, Vec<u8>)>> + use<'_>> {
+        let handle = self.handle(cf)?;
+        let iter = self.db.iterator_cf(&handle, IteratorMode::Start);
+        Ok(iter.map(move |kv| {
+            let (key, value) = kv.with_context(|| format!("scanning {cf}"))?;
+            Ok((key.to_vec(), value.to_vec()))
+        }))
+    }
+
     /// Walk `cf` from `from` (inclusive) to the end, in index order.
     ///
     /// The scan is lazy: entries are decoded as the iterator is consumed, so a caller that stops
