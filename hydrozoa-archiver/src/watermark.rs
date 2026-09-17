@@ -20,7 +20,11 @@ pub struct WatermarkReport {
 }
 
 /// What the node made of it.
+///
+/// Field names follow hydrozoa's API, which is camelCase throughout — `effectiveFloor` on the
+/// wire. The node owns the convention; this is its client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WatermarkResponse {
     /// The floor the node actually adopted per family, after taking the minimum with what
     /// consensus still needs. Lets the archiver see whether it is the binding constraint or the
@@ -74,4 +78,38 @@ pub fn report(
     Ok(response.json().unwrap_or(WatermarkResponse {
         effective_floor: BTreeMap::new(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wire names are hydrozoa's, not Rust's. A rename on either side silently produces an
+    /// empty `effectiveFloor` rather than an error, so it is pinned here.
+    #[test]
+    fn the_response_decodes_hydrozoas_camel_case() {
+        let json = r#"{"effectiveFloor":{"Block":42,"Request:0":7}}"#;
+        let decoded: WatermarkResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(decoded.effective_floor.get("Block"), Some(&42));
+        assert_eq!(decoded.effective_floor.get("Request:0"), Some(&7));
+    }
+
+    /// A node that answers 200 with no floor has accepted the report and said nothing about what
+    /// it adopted. Not an error: the archiver's work is done either way.
+    #[test]
+    fn an_absent_floor_decodes_as_empty() {
+        let decoded: WatermarkResponse = serde_json::from_str("{}").unwrap();
+        assert!(decoded.effective_floor.is_empty());
+    }
+
+    #[test]
+    fn the_request_serializes_the_family_names_verbatim() {
+        let body = WatermarkReport {
+            watermarks: [("Request:0".to_string(), 510941u64)].into_iter().collect(),
+        };
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"watermarks":{"Request:0":510941}}"#
+        );
+    }
 }
