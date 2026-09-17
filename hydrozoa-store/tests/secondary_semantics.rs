@@ -239,3 +239,44 @@ fn a_secondary_opens_a_primary_directory_it_cannot_write() {
     );
     assert!(saw_wal, "WAL data unreadable from a read-only store dir");
 }
+
+/// WAL visibility does not depend on the primary fsyncing, nor on the secondary having been open
+/// when the writes happened.
+///
+/// Worth pinning explicitly, because sugar-rush-ledger's aggregator carries the opposite claim in
+/// a comment -- "a RocksDB secondary reliably reads only *flushed* SSTs, not the primary's live
+/// memtable/WAL" -- and runs a periodic `flush()` on its views primary to work around it. On the
+/// RocksDB this crate pins, all four combinations below are visible. That comment may describe an
+/// older RocksDB, or a symptom with another cause.
+///
+/// The archiver should not bank on it either way: it is a latency property, not a correctness one.
+/// Archive what is visible, report that as the watermark, and let retention follow. Then WAL
+/// visibility decides only how promptly disk is freed, never whether the archive is sound.
+#[test]
+fn wal_visibility_needs_neither_fsync_nor_a_secondary_open_at_write_time() {
+    for sync in [true, false] {
+        // The secondary was already open when the write landed.
+        let dir = tempfile::tempdir().unwrap();
+        let (p, s) = (dir.path().join("primary"), dir.path().join("secondary"));
+        let primary = open_primary(&p);
+        let secondary = open_secondary(&p, &s);
+        put(&primary, "Block", b"k", b"v", sync);
+        secondary.try_catch_up_with_primary().unwrap();
+        assert!(
+            get(&secondary, "Block", b"k").is_some(),
+            "sync={sync}: unflushed write invisible to an already-open secondary"
+        );
+
+        // The secondary opened only afterwards -- the "blank on restart" shape.
+        let dir = tempfile::tempdir().unwrap();
+        let (p, s) = (dir.path().join("primary"), dir.path().join("secondary"));
+        let primary = open_primary(&p);
+        put(&primary, "Block", b"k", b"v", sync);
+        let secondary = open_secondary(&p, &s);
+        secondary.try_catch_up_with_primary().unwrap();
+        assert!(
+            get(&secondary, "Block", b"k").is_some(),
+            "sync={sync}: unflushed write invisible to a secondary opened after it"
+        );
+    }
+}
