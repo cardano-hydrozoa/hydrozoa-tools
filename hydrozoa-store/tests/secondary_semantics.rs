@@ -163,12 +163,16 @@ fn a_column_family_added_after_open_is_invisible_to_the_secondary() {
     );
 }
 
-/// RocksDB puts NO lock on the secondary path: a second secondary opens on the same directory
-/// without complaint, and the two then scribble over each other's bookkeeping.
+/// Nothing prevents two secondaries sharing one secondary path: the second opens, both catch up,
+/// both read correctly, and no LOCK file is created in that directory at all.
 ///
-/// This is why `unique_secondary` appends the pid. It is not tidiness -- there is no error to
-/// catch, so a shared path fails silently rather than loudly, and nothing but the naming prevents
-/// two archiver runs from corrupting each other's view of where they had read to.
+/// sugar-rush-ledger's aggregator config says the opposite -- "two secondaries on one path fight
+/// over its LOCK file" -- and gives its refund tail and its command reader separate scratch paths
+/// on that basis. On the RocksDB this crate pins, there is no fight to lose, which is worse rather
+/// than better: a shared path produces no error to catch, so misuse would surface as two archiver
+/// runs quietly disagreeing about where they had read to, not as a failed open.
+///
+/// So `unique_secondary`'s pid suffix stays. It costs nothing and removes the question.
 #[test]
 fn nothing_stops_two_secondaries_sharing_one_path() {
     let dir = tempfile::tempdir().unwrap();
