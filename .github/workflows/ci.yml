@@ -63,3 +63,16 @@ jobs:
       - name: Docs-only change — build/test skipped
         if: github.event_name == 'pull_request' && steps.filter.outputs.code != 'true'
         run: echo "Only Markdown changed — skipping Nix build, lint, and tests. The 'build' check passes."
+
+  # The flake's checks, which run mdreflow over every Markdown file (settings in .mdreflow.yaml).
+  # Its own job, not part of `build`, because `build` skips everything on a docs-only PR, which is
+  # exactly when this check matters.
+  flake-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Run nix flake check
+        run: nix flake check
