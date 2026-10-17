@@ -4,9 +4,17 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     utils.url = "github:numtide/flake-utils";
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    mdreflow = {
+      url = "github:GeorgeFlerovsky/mdreflow/v0.3.0-fork.2";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, utils }:
+  outputs = { self, nixpkgs, utils, git-hooks, mdreflow }:
     utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
@@ -40,8 +48,25 @@
             done
           '';
         };
+
+        mdreflowPkg = mdreflow.packages.${system}.default;
+
+        # One sentence per line in every Markdown file. The settings live in
+        # .mdreflow.yaml, so running `mdreflow .` by hand does the same as the
+        # hook.
+        pre-commit-check = git-hooks.lib.${system}.run {
+          src = ./.;
+          hooks.mdreflow = {
+            enable = true;
+            name = "mdreflow";
+            entry = "${mdreflowPkg}/bin/mdreflow";
+            files = "\\.(md|mdx|markdown)$";
+          };
+        };
       in {
         packages.fix-rustrover-stdlib = fix-rustrover-stdlib;
+
+        checks = { inherit pre-commit-check; };
 
         devShell = with pkgs;
           mkShell {
@@ -68,13 +93,17 @@
               pkg-config
               just
 
+              # Markdown formatting (see .mdreflow.yaml).
+              mdreflowPkg
+
               fix-rustrover-stdlib
             ];
 
-            # Heal RustRover's stdlib cache on shell entry (no-op when intact).
+            # Heal RustRover's stdlib cache on shell entry (no-op when intact),
+            # then install the pre-commit hooks.
             shellHook = ''
               fix-rustrover-stdlib
-            '';
+            '' + pre-commit-check.shellHook;
 
             # Give this to RustRover as the stdlib source.
             RUST_SRC_PATH = "${rustPlatform.rustLibSrc}";
